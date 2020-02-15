@@ -1,0 +1,212 @@
+ Function.prototype.call2 = function( context ){
+     // this => 调用函数本身
+    // context => 传入的参数
+    var context = context || window;
+    var args = [];
+     for( var i = 1; i < arguments.length; i++ ){
+         args.push( 'arguments[' +i + ']' )
+     }
+
+     context.fn = this;  
+    var result = eval('context.fn(' + args +')');
+     delete context.fn;
+    return result
+}
+
+
+Function.prototype.apply2 = function( context, arr ){
+    var context = Object( context ) || window;
+        context.fn = this;
+    var result;
+    if( !arr ){
+        result = context.fn();
+    }else{
+       var args = [];
+       for( var i = 0; i < arr.length; i++ ){
+           args.push( 'arr[' + i + ']' )
+       }
+      result = eval('context.fn('+ args +')')
+    }
+    delete context.fn;
+   return result
+}
+
+
+Function.prototype.bind2 = function( context ){
+     var context = Object( context ) || window;
+     var self = this;
+     var args = Array.prototype.slice.call( arguments, 1 );
+      console.log( 'args', args );
+     var fBound = function(){
+          var bindArgs = Array.prototype.slice.call( arguments );
+       console.log( 'bindArgs', bindArgs );
+          return self.apply2( this instanceof fBound ? this : context, args.concat( bindArgs )  )
+     }
+     // 新的函数继承调用函数的原型
+     var fNop = function(){};
+         fNop.prototype = this.prototype;
+     fBound.prototype = new fNop();
+     return fBound
+  
+}
+
+
+ ---------------------- promise ------------------------------
+
+  var PENDING = 'pending';
+  var FULFILLED = 'fulfilled';
+  var REJECTED = 'rejected';
+
+function WPromise(fn){
+
+      this.state = PENDING;
+      this.value = null;
+      this.reason = null;
+      this.onFulfilledCallbacks = [];
+      this.onRejectedCallbacks = [];
+      this.resolve = function( value ){
+                setTimeout(function(){
+                        if( this.state === PENDING ){
+                            this.state = FULFILLED;
+                            this.value = value;
+                            for( var i = 0, len = this.onFulfilledCallbacks.length; i < len; i++ ){
+                                    this.value = this.onFulfilledCallbacks[i]( this.value );
+                            }
+                        }
+                }.bind(this))
+            }.bind(this);
+
+    this.reject = function( reason ){
+                setTimeout(function(){
+                        if( this.state === PENDING ){
+                            this.state = REJECTED;
+                            this.reason = reason;
+                            this.onRejectedCallbacks
+                            for( var i = 0, len = this.onRejectedCallbacks.length; i < len; i++  ){
+                                    this.reason = this.onRejectedCallbacks[i]( this.reason );
+                            }
+                        }
+                }.bind(this))
+            }.bind(this);
+
+      try{
+         fn( this.resolve, this.reject )
+      }catch( e ){
+           this.reject( e )
+      }
+}
+
+
+// promise 解决过程
+var resolvePromise = function( promise2, x, resolve, reject ){
+       if( x === promise2 ) reject( new TypeError('循环引用'));
+       if( x instanceof WPromise ){ // 如果then返回的是一个新的 promise。
+            if( x.state === PENDING ){
+                 x.then(function( y ){
+                       resolvePromise( promise2, y, resolve, reject );
+                 },function( reason ){
+                       reject( reason )
+                 })
+            }else{
+                x.then( resolve, reject )
+            }
+      }else if( x && ( typeof x === 'function' || typeof x === 'object' )){
+            var called = false;
+            try{
+                var then = x.then;  // 无论返回的是函数还是对象，只要拥有then属性并且是函数类型，都符合规范。
+                if( typeof then === 'function' ){
+                     then.call( x, function( y ){
+                           if( called ) return;
+                           called = true;
+                           resolvePromise( promise2, y, resolve, reject );
+                     },
+                      function( r ){
+                            if( called ) return;
+                              called = true;
+                              reject(r)
+                      })
+                }else{
+                     // 返回的是对象
+                     resolve( x )
+                }
+            }catch( e ){
+                if( called ) return;
+                  called = true;
+                  reject( e )
+            }
+      }else{
+             // 如果无返回或是返回字符串，数字等...
+             console.log('什么狗屎都没返回 last')
+             resolve( x )
+      }
+
+};
+
+
+WPromise.prototype.then = function( onFulfilled, onRejected ){
+      var newPromise;
+          onFulfilled = typeof onFulfilled === 'function' ? onFulfilled : function( value){  return value };
+          onRejected = typeof onRejected === 'function' ? onRejected : function( reason ){  return reason  }
+
+      if( this.state === FULFILLED ){
+           return ( newPromise = new WPromise(function( resolve, reject ){
+                   setTimeout(function(){
+                        try{
+                            var x = onFulfilled( value );
+                                // 解决过程
+                                resolvePromise( newPromise, x, resolve, reject );
+                        }catch( e ){
+                             reject( e )
+                        }
+                   })
+           }))
+      }
+
+
+      if( this.state == REJECTED ){
+            return ( newPromise = new WPromise(function( resolve, reject ){
+                setTimeout(function(){
+                      try{
+                        var x = onRejected( reason );
+                          // 解决过程
+                          resolvePromise( newPromise, x, resolve, reject );
+                    }catch( e ){
+                             reject( e )
+                        }
+                })
+            }))
+      }
+
+
+      if( this.state == PENDING ){
+            var that = this;
+            return ( newPromise = new WPromise(function( resolve, reject ){
+                that.onFulfilledCallbacks.push(function( value ){
+                            try{
+                                var x = onFulfilled( value );
+                                // 解决过程
+                                resolvePromise( newPromise, x, resolve, reject );
+                            }catch( e ){
+                                reject( e )
+                            }
+                         }); 
+            
+               that.onRejectedCallbacks.push(function( reason ){
+                    try{
+                          var x = onRejected( reason );
+                            // 解决过程
+                            resolvePromise( newPromise, x, resolve, reject );
+                    }catch( e ){
+                        reject( e ) 
+                    }
+                })          
+            }))
+      }
+}
+
+WPromise.prototype.catch = function( onRejected ){
+      typeof onRejected === 'function'&& this.onRejectedCallbacks.push( onRejected );
+      return this
+}
+
+
