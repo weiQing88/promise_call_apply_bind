@@ -205,8 +205,59 @@ WPromise.prototype.then = function( onFulfilled, onRejected ){
 }
 
 WPromise.prototype.catch = function( onRejected ){
-      typeof onRejected === 'function'&& this.onRejectedCallbacks.push( onRejected );
-      return this
+    return this.then(null, onRejected);
+}
+
+WPromise.resolve = function( value ){
+    return new WPromise(function( resolve, reject ){
+           resolve( value );
+    })
+}
+
+WPromise.reject = function( reason ){
+    return new WPromise(function( resolve, reject ){
+           reject( reason );
+    })
+}
+
+// 延迟对象
+WPromise.deferred = function(){
+      var defer = {};
+       defer.promise = new WPromise(function( resolve, reject ){
+              defer.resolve = resolve;
+              defer.reject = reject;
+       });
+      return defer;
+}
+
+WPromise.all = function(promises){
+      return new WPromise(function( resolve, reject ){
+             var done = gen( promises.length, resolve );
+              for(var i = 0, len = promises.length; i < len; i++ ){
+                    promises[i].then(function( value ){
+                           done( i, value )
+                    },reject)
+              }
+      })
+}
+
+function gen( length, resolve ){
+    var count = 0,
+        values = [];
+     return function( i, value ){
+           if( ++count === length ){
+                resolve( values )
+           }
+     }
+}
+
+
+WPromise.race = function( promises ){
+     return new WPromise(function( resolve, reject ){
+            for( var i = 0, len = promises.length; i < len; i++ ){
+                  promises[i].then( resolve, reject )
+            }
+     })
 }
 
 
